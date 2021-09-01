@@ -1,30 +1,4 @@
-document.addEventListener("DOMContentLoaded", initialize);
-
-class Variable {
-  constructor(initVal) {
-    this.val = initVal; // Value to be stored in this object
-  }
-
-  listenForValue = (val, fn) => {
-    this.valueToListenFor = val;
-    this.onChange = fn;
-  };
-
-  listen = () => (this.shouldListen = true);
-
-  unregister = () => (this.shouldListen = false);
-
-  getValue = () => this.val;
-
-  // This method changes the value and calls the given handler
-  setValue = function (value) {
-    this.val = value;
-    if (this.shouldListen && this.valueToListenFor === value) this.onChange?.();
-  };
-}
-
 function initialize() {
-  ANIMATION_PROPERTIES = { duration: 60, easing: "ease-in-sine" };
   CY = cytoscape({
     container: document.querySelector("#cy"),
     layout: {
@@ -41,28 +15,17 @@ function initialize() {
     zoom: 1,
     zoomingEnabled: true,
   }).nodeHtmlLabel([{ query: "node", tpl: _nodeMarkup }]);
+  ANIMATION_PROPERTIES = { duration: 60, easing: "ease-in-sine" };
 
   _updateCyStyle();
   window.matchMedia(DARK_MODE_SCHEME).addEventListener("change", (e) => {
-    _updateCyStyle(e.matches ? cyDarkStyle : cyLightStyle);
+    _updateCyStyle(e.matches ? CY_DARK_STYLE : CY_LIGHT_STYLE);
   });
 
   _applyCustomizedEvents();
   _cytoscapeListeners();
 
   loadGraph(get_random_data(true));
-
-  document.zoomOut = _zoomOut;
-  document.zoomIn = _zoomIn;
-  document.resizeGraph = _resizeGraph;
-  document.highlightPath = highlightPath;
-  document.clearHighlightedPath = clearHighlightedPath;
-  document.isZoomReachedMax = isZoomReachedMax;
-  document.isZoomReachedMin = isZoomReachedMin;
-  document.loadGraph = loadGraph;
-  document.setBaseColor = (...args) => {
-    IS_GRAPH_LOADING.listenForValue(false, () => set_base_color(...args));
-  };
 }
 
 const styleJsonToString = (style = {}, data = {}) => {
@@ -108,8 +71,8 @@ function _nodeMarkup(data) {
 }
 
 function _getCyStyle() {
-  if (!window?.matchMedia?.(DARK_MODE_SCHEME).matches) return cyLightStyle;
-  return cyDarkStyle;
+  if (!window?.matchMedia?.(DARK_MODE_SCHEME).matches) return CY_LIGHT_STYLE;
+  return CY_DARK_STYLE;
 }
 
 function _updateCyStyle(style = _getCyStyle()) {
@@ -120,7 +83,7 @@ function _updateCyStyle(style = _getCyStyle()) {
   CY.style().clear().fromJson(style).update();
 }
 
-function deepEqual(x, y) {
+function deepEqual(x = {}, y = {}) {
   const ok = Object.keys,
     tx = typeof x,
     ty = typeof y;
@@ -160,12 +123,12 @@ function _setZoomConfig(config) {
 }
 
 function _setInitialStyle() {
-  const eq = () => true;
-  const lt = () => false;
-  const gt = () => false;
+  const eq = (_) => true;
+  const lt = (_) => false;
+  const gt = (_) => false;
   ZOOM_SETTINGS.custom_zoom_levels?.map((c = {}) => {
     if (!c.condition_exp({ eq, lt, gt })) return;
-    _nodeStyleHandler(c.node_style);
+    _nodeMarkupStyleHandler(c.node_markup_style);
     _edgeStyleHandler(c.edge_style);
   });
 }
@@ -173,7 +136,6 @@ function _setInitialStyle() {
 function _addElements(elements, options = { animate: true }) {
   CY.elements().remove();
   CY.add(elements);
-  // _updateCyStyle();
   ZOOM_SETTINGS = {}; // reset zoom-config
   const nodes_len = CY.nodes().length;
   ZOOM_CONFIG.map((c) => c.condition_exp(nodes_len) && _setZoomConfig(c));
@@ -200,9 +162,9 @@ function loadGraph(data) {
     const _isDeepEqual = deepEqual(prev_ele_data, new_elements);
     if (_isDeepEqual || !new_elements) return resolve(false);
     PREV_DATA = { ...data };
-    const { elements: prev_elements } = CY.json();
-    const { nodes: new_nodes } = new_elements;
-    const { nodes: previous_nodes } = prev_elements;
+    const { elements: prev_elements = {} } = CY.json();
+    const { nodes: new_nodes = [] } = new_elements;
+    const { nodes: previous_nodes = [] } = prev_elements;
     const nearest_nodes = findNearestNodes(previous_nodes, new_nodes);
     const _hasTransitNodes = nearest_nodes.some((n) => n.prev_node_id);
     if (!_hasTransitNodes) {
@@ -230,43 +192,33 @@ function loadGraph(data) {
         return ({ x: toX, y: toY } = nearest_node?.position);
       },
       stop: () => {
-        const layout_option = {
+        const layout_options = {
           name: "preset",
           animate: true,
           fit: true,
           stop: () => {
-            _setDefZoomCoord();
-            IS_GRAPH_LOADING.setValue(false);
-            resolve(true);
+            const layout_options = {
+              name: "preset",
+              animate: true,
+              fit: true,
+              stop: () => {
+                _setDefZoomCoord();
+                IS_GRAPH_LOADING.setValue(false);
+                resolve(true);
+              },
+            };
+            CY.elements().layout(layout_options).run(); // To resize the graph, if it's not already resized properly from the previous layout animation
           },
-          // const layout_option = {
-          //   name: "preset",
-          //   animate: true,
-          //   fit: true,
-          //   stop: () => {
-
-          //     // _onScrollZoom();
-
-          //     // const { h, w } = CY.elements().renderedBoundingBox();
-          //     // console.log(_isGraphSizeEqual(0, { h, w })),
-          //     // setTimeout(
-          //     // () => console.log(_isGraphSizeEqual(0, { h, w })),
-          //     // 0
-          //     // );
-          //     resolve(true);
-          //   },
-          // };
-          // CY.elements().layout(layout_option).run(); // To resize the graph, if it's not already resized properly from the previous layout animation
         };
         _addElements(data.elements, { animate: false });
-        CY.elements().layout(layout_option).run();
+        CY.elements().layout(layout_options).run();
       },
     };
     CY.elements().layout(transform_layout_options).run();
   });
 }
 
-function findNearestNodes(previous_nodes, new_nodes) {
+function findNearestNodes(previous_nodes, new_nodes = []) {
   const ingnorable_ids = ["@@startnode", "@@endnode"];
   const allocated_prev_node_ids = [];
   new_nodes.map((new_node) => {
@@ -334,47 +286,53 @@ const _isSmallNode = (data) => data.node_size === SMALL_NODE_TAG;
 const _isMediumNode = (data) => data.node_size === MEDIUM_NODE_TAG;
 const _isLargeNode = (data) => data.node_size === LARGE_NODE_TAG;
 
-function _updateNodeStyle(nodes, node_style, node_size) {
-  if (!node_style?.[node_size]) return;
+function _updateNodeMarkupStyle(nodes, markup_style, node_size) {
+  if (!markup_style?.[node_size]) return;
   for (let i = 0; i < nodes?.length; i++) {
     const data = JSON.parse(atob(nodes[i].getAttribute("data-json")));
-    if (node_style?.[node_size]?.wrapper) {
-      const style = styleJsonToString(node_style?.[node_size].wrapper, data);
+    if (markup_style?.[node_size]?.wrapper) {
+      const style = styleJsonToString(markup_style?.[node_size].wrapper, data);
       nodes[i].style.cssText += style;
     }
-    if (node_style?.[node_size]?.name && nodes[i].children?.[0]) {
-      const style = styleJsonToString(node_style?.[node_size].name, data);
+    if (markup_style?.[node_size]?.name && nodes[i].children?.[0]) {
+      const style = styleJsonToString(markup_style?.[node_size].name, data);
       nodes[i].children[0].style.cssText += style;
     }
-    if (node_style?.[node_size]?.label && nodes[i].children?.[1]) {
-      const style = styleJsonToString(node_style?.[node_size].label, data);
+    if (markup_style?.[node_size]?.label && nodes[i].children?.[1]) {
+      const style = styleJsonToString(markup_style?.[node_size].label, data);
       nodes[i].children[1].style.cssText += style;
     }
   }
 }
 
-function _nodeStyleHandler(node_style = {}) {
-  if (!node_style) return;
-  node_style.exec?.();
+function _nodeMarkupStyleHandler(markup_style = {}) {
+  if (!markup_style) return;
+  markup_style.exec?.();
   // global style that applies to every graph regardless of the node-size
   const nodes = document.getElementsByClassName("node-wrapper");
-  _updateNodeStyle(nodes, node_style, "all");
+  _updateNodeMarkupStyle(nodes, markup_style, "all");
   [SMALL_NODE_TAG, MEDIUM_NODE_TAG, LARGE_NODE_TAG].map((tag) => {
-    if (!node_style[tag]) return;
+    if (!markup_style[tag]) return;
     const nodes = document.getElementsByClassName(`${tag}-node`);
-    _updateNodeStyle(nodes, node_style, tag);
+    _updateNodeMarkupStyle(nodes, markup_style, tag);
+  });
+}
+
+function _nodeStyleHandler(node_style = {}) {
+  const { all = {}, connected_edges = {}, exec } = node_style;
+  typeof exec === "function" && exec();
+  CY.nodes().style(all);
+  Object.entries(connected_edges).map(([key, value = {}]) => {
+    const nodes = CY.nodes(key !== "all" && `[node_size = "${key}"]`);
+    nodes.map((n) => n.connectedEdges().style(value));
   });
 }
 
 function _edgeStyleHandler(edge_style = {}) {
-  if (!edge_style) return;
   const { all = {}, connected_nodes = {}, exec } = edge_style;
   typeof exec === "function" && exec();
   CY.edges().style(all);
-  Object.entries(connected_nodes).map(([key, value = {}]) => {
-    const nodes = CY.nodes(key !== "all" && `[node_size = "${key}"]`);
-    nodes.map((n) => n.connectedEdges().style(value));
-  });
+  CY.edges().map((e) => e.connectedNodes().style(connected_nodes));
 }
 
 const _zoomHandler = (e = _getCustomScrollEvent()) => {
@@ -384,6 +342,7 @@ const _zoomHandler = (e = _getCustomScrollEvent()) => {
   const lt = (pct) => _isGraphSizeSmaller(pct, { h, w });
   ZOOM_SETTINGS?.custom_zoom_levels?.map((c) => {
     if (!c.condition_exp({ gt, lt, eq })) return;
+    _nodeMarkupStyleHandler(c.node_markup_style);
     _nodeStyleHandler(c.node_style);
     _edgeStyleHandler(c.edge_style);
   });
@@ -407,13 +366,11 @@ function _cytoscapeListeners() {
 
   // canvas event-listeners
   canvas.on("click", (e) => {
-    if (e.target !== cy) return;
-    CY.elements().removeClass("highlighted");
-    CY.elements().removeClass("highlight-element");
-    CY.elements().removeClass("highlight-edge");
+    if (e.target !== CY) return;
+    CY.elements().removeClass("click highlight");
   });
   canvas.on("dblclick", (e) => {
-    if (e.target !== cy) return;
+    if (e.target !== CY) return;
     _zoomIn(e.originalEvent.x, e.originalEvent.y);
   });
 
@@ -422,7 +379,7 @@ function _cytoscapeListeners() {
   node.on("dblclick", (e) => {
     loadGraph(get_random_data());
     const modal_data = e.target.attr();
-    // window.webkit.messageHandlers.didDoubleClickNode.postMessage(modal_data);
+    window.webkit.messageHandlers.didDoubleClickNode.postMessage(modal_data);
   });
 
   // edge event-listeners
@@ -500,8 +457,9 @@ function _applyCustomizedEvents() {
 }
 
 function nodeClickFn(e) {
+  CY.elements().removeClass("click highlight");
   const node = e.target;
-  node.addClass("highlight-element");
+  node.addClass("click");
   const nodeData = node.attr();
   const nodePosition = node.renderedPosition();
   const nodeBox = node.renderedBoundingBox();
@@ -512,13 +470,14 @@ function nodeClickFn(e) {
     size: { height: nodeBox.h, width: nodeBox.w },
     position: { x: nodePosition.x, y: nodePosition.y },
   };
-  window.webkit.messageHandlers.didClickNode.postMessage(modal_data);
+  // window.webkit.messageHandlers.didClickNode.postMessage(modal_data);
 }
 
 function edgeClickFn(e) {
+  CY.elements().removeClass(["click", "highlight"]);
   const edge = e.target;
-  edge.addClass("highlight-edge");
-  edge.connectedNodes().addClass("highlight-element");
+  edge.addClass("click");
+  edge.connectedNodes().addClass("click");
   const edgeData = edge.attr();
   edgeData.source = edge.connectedNodes()[0].attr().name;
   edgeData.target = edge.connectedNodes()[1].attr().name;
@@ -533,8 +492,17 @@ function edgeClickFn(e) {
 function _resizeGraph() {
   CLEAR_RESIZE_TIMER && clearTimeout(CLEAR_RESIZE_TIMER);
   CLEAR_RESIZE_TIMER = setTimeout(() => {
-    CY.resize();
-    CY.fit(CY.elements(), 20);
+    const prev_viewport = { zoom: CY.zoom(), pan: CY.pan() };
+    const layout_options = {
+      name: "preset",
+      animate: false,
+      fit: true,
+      stop: () => {
+        prev_viewport.pan.x = CY.pan("x"); // To keep the horizontal axis up to date
+        CY.viewport(prev_viewport);
+      },
+    };
+    CY.elements().layout(layout_options).run();
   }, 1000);
 }
 
@@ -554,23 +522,21 @@ function highlightPath(xLabels, highlightedColor = "#ffd480") {
   }
   nodes.map((node, idx) => {
     node.data().highlightedColor = highlightedColor;
-    node.addClass("highlighted");
+    node.addClass("highlight");
     if (!nodes?.[idx + 1]) return;
     const nextNodeTarget = nodes[idx + 1].attr().id;
     for (let i = 0; i < node.connectedEdges().length; i++) {
       const { target } = node.connectedEdges()[i].attr();
       if (target == nextNodeTarget) {
         node.connectedEdges()[i].data().highlightedColor = highlightedColor;
-        node.connectedEdges()[i].addClass("highlighted");
+        node.connectedEdges()[i].addClass("highlight");
       }
     }
   });
 }
 
 function clearHighlightedPath() {
-  CY.elements().removeClass("highlighted");
-  CY.elements().removeClass("highlight-element");
-  CY.elements().removeClass("highlight-edge");
+  CY.elements().removeClass("highlight");
 }
 
 function componentToHex(c) {
@@ -616,6 +582,7 @@ function map_numbers(x, old_min, old_max, new_min, new_max) {
 }
 
 function set_base_color(hex_color) {
+  IS_GRAPH_LOADING.unregister();
   const frequency_list = {};
   CY.nodes().map((node) => {
     const { id, xlabel } = node.data();
@@ -647,3 +614,18 @@ function set_base_color(hex_color) {
   });
   _updateCyStyle();
 }
+
+document.addEventListener("DOMContentLoaded", initialize);
+
+document.zoomOut = _zoomOut;
+document.zoomIn = _zoomIn;
+document.resizeGraph = _resizeGraph;
+document.highlightPath = highlightPath;
+document.clearHighlightedPath = clearHighlightedPath;
+document.isZoomReachedMax = isZoomReachedMax;
+document.isZoomReachedMin = isZoomReachedMin;
+document.loadGraph = loadGraph;
+document.setBaseColor = (...args) => {
+  IS_GRAPH_LOADING.listen();
+  IS_GRAPH_LOADING.listenForValue(false, () => set_base_color(...args));
+};

@@ -1,4 +1,4 @@
-const cyDarkStyle = {
+const CY_DARK_STYLE = {
   node: {
     shape: "data(faveShape)",
     width: "data(weight)",
@@ -87,17 +87,21 @@ const cyDarkStyle = {
     opacity: 0.25,
     "text-opacity": 0,
   },
-  ".highlighted": {
+  "node.highlight": {
     "background-color": "data(highlightedColor)",
-    "line-color": "data(highlightedColor)",
-    "target-arrow-color": "data(highlightedColor)",
-    "transition-property": "background-color, line-color, target-arrow-color",
+    "transition-property": "background-color",
     "transition-duration": "0.5s",
   },
-  ".highlight-element": {
+  "edge.highlight": {
+    "line-color": "data(highlightedColor)",
+    "target-arrow-color": "data(highlightedColor)",
+    "transition-property": "line-color, target-arrow-color",
+    "transition-duration": "0.5s",
+  },
+  "node.click": {
     "background-color": "#C3E2FF",
   },
-  ".highlight-edge": {
+  "edge.click": {
     "source-arrow-color": "#C3E2FF",
     "target-arrow-color": "#C3E2FF",
     "background-color": "#C3E2FF",
