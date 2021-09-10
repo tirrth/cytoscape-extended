@@ -1,48 +1,33 @@
-const cyDarkStyle = {
+const CY_DARK_STYLE = {
   node: {
-    shape: "data(faveShape)",
-    width: "data(weight)",
-    // 'content': function (element) {
-    //     // if (element.data("id") === '@@startnode') return '▶';
-    //     // if (element.data("id") === '@@endnode') return '■';
-    //     // if (element.data("name")) {
-    //     //     let name = element.data('name')
-    //     //     if (element.data("xlabel")) {
-    //     //         if (element.data("isNameHidden") && element.data("isLabelHidden")) return ''
-    //     //         if (element.data("isNameHidden")) return (element.data("xlabel"))
-    //     //         if (element.data("isLabelHidden")) return (name)
-    //     //         return `${name}\n\n${element.data("xlabel")}`
-    //     //     }
-    //     //     return `${name}`
-    //     // }
-    //     return ``
-    // },
-    "text-valign": "center",
-    // 'text-outline-width': 1,
-    // 'text-outline-color': (e) => change_color(e.data('faveColor'), -0.4),
-    "background-color": (e) => change_color(e.data("faveColor"), -0.4),
-    // 'border-color': '#ffffff',
-    // 'border-width': '1px',
-    // 'border-style': 'solid',
-    color: (e) => change_color(e.data("faveTextColor"), -0.4),
-    "font-size": "data(font)",
     height: "data(height)",
-    padding: "5px",
-    "text-border-width": 0,
-    "text-wrap": "wrap",
-    padding: "5px",
-  },
-  ":selected": {
-    "border-width": 3,
-    "border-color": "#333",
+    width: "data(weight)",
+    shape: "data(faveShape)",
+    color: (e) => change_color(e.data("faveTextColor"), -0.4),
+    padding: "8px",
+    "background-color": (e) => {
+      if (e.data("id") === "@@startnode") return "#000";
+      if (e.data("id") === "@@endnode") return "#f58b00";
+      return change_color(e.data("faveColor"), -0.4);
+    },
+    "border-style": "solid",
+    "border-color": (e) => {
+      if (e.data("id") === "@@startnode") return "#f58b00";
+      if (e.data("id") === "@@endnode") return "#f58b00";
+      return "#000000";
+    },
+    "border-width": (e) => {
+      const node_id = e.data("id");
+      if (node_id === "@@startnode" || node_id === "@@endnode") return "5px";
+      return "0px";
+    },
   },
   edge: {
-    // 'color': (e) => change_color(e.data('faveColor'), -0.4),
     color: "#ACACAC",
     "control-point-step-size": 60,
     "edge-text-rotation": 0,
     "font-size": 18,
-    label: (e) => e.data("label"),
+    label: "data(label)",
     "loop-direction": -41,
     "loop-sweep": 181,
     "text-background-color": "#000",
@@ -56,54 +41,51 @@ const cyDarkStyle = {
     width: "mapData(strength, 0, 100, 2, 8)",
     "target-arrow-shape": "triangle",
     "line-color": "#ACACAC",
-    // 'source-arrow-color': (e) => change_color(e.data('faveColor'), -0.4),
-    // 'target-arrow-color': (e) => change_color(e.data('faveColor'), -0.4),
     "source-arrow-color": "#ACACAC",
     "target-arrow-color": "#ACACAC",
     "edge-distances": "intersection",
     "text-outline-color": "#ACACAC",
     "text-outline-width": 0,
-    "control-point-distances": function (ele) {
-      if (ele.data("point-distances")) {
-        return ele.data("point-distances");
-      }
-      return 40;
-    },
-    "control-point-weights": function (ele) {
-      if (ele.data("point-weights")) {
-        return ele.data("point-weights");
-      }
-      return 0.5;
-    },
+    "control-point-distances": (e) => e.data("point-distances") || 40,
+    "control-point-weights": (e) => e.data("point-weights") || 0.5,
   },
+
+  // on scrollzoom
+  "node.scrollzoom": { "border-width": "2px" },
+  "edge.scrollzoom": {},
+
+  // questionable - from server side
+  "node.questionable": {},
   "edge.questionable": {
     "line-style": "dashed",
     "target-arrow-shape": "triangle",
   },
-  ".mouseOverColor": {
-    "background-color": "#a0a0a0",
-  },
-  ".faded": {
-    opacity: 0.25,
-    "text-opacity": 0,
-  },
-  ".highlighted": {
+
+  // on mouseover
+  ".mouseover": { "background-color": "#a0a0a0" },
+
+  // on highlight
+  "node.highlight": {
     "background-color": "data(highlightedColor)",
     "line-color": "data(highlightedColor)",
     "target-arrow-color": "data(highlightedColor)",
     "transition-property": "background-color, line-color, target-arrow-color",
     "transition-duration": "0.5s",
   },
-  ".highlight-element": {
-    "background-color": "#C3E2FF",
+  "edge.highlight": {},
+
+  // on click
+  "node.click": {
+    "border-width": 5,
+    "border-color": "#fff",
   },
-  ".highlight-edge": {
+  "edge.click": {
     "source-arrow-color": "#C3E2FF",
     "target-arrow-color": "#C3E2FF",
     "background-color": "#C3E2FF",
     "line-color": "#C3E2FF",
   },
-  "edge.hide-label": {
-    "text-opacity": 0,
-  },
+
+  // hide edge label
+  "edge.hide-label": { "text-opacity": 0 },
 };

@@ -1,59 +1,33 @@
-const cyLightStyle = {
+const CY_LIGHT_STYLE = {
   node: {
-    shape: "data(faveShape)",
-    width: "data(weight)",
-    // 'content': function (element) {
-    //     if (element.data("isSmallNode")) return '';
-    //     if (element.data("id") === '@@startnode') return '▶';
-    //     if (element.data("id") === '@@endnode') return '■';
-    //     if (element.data("name")) {
-    //         let name = element.data('name')
-    //         if (element.data("xlabel")) {
-    //             if (element.data("isNameHidden") && element.data("isLabelHidden")) return ''
-    //             if (element.data("isNameHidden")) return (element.data("xlabel"))
-    //             if (element.data("isLabelHidden") || element.data("isMediumNode")) return (name)
-    //             return `${name}\n\n${element.data("xlabel")}`
-    //         }
-    //         return `${name}`
-    //     }
-    //     return ``
-    // },
-    "text-valign": "center",
-    "text-outline-width": 1,
-    "text-outline-color": (e) => change_color(e.data("faveColor"), -0.1),
-    "background-color": (e) => change_color(e.data("faveColor"), -0.1),
-    "border-color": (e) => change_color(e.data("faveColor"), 0.3),
-    "border-width": "1px",
-    "border-style": "solid",
-    color: (e) => change_color(e.data("faveTextColor"), 0),
-    "font-size": "data(font)",
     height: "data(height)",
+    width: "data(weight)",
+    shape: "data(faveShape)",
+    color: (e) => change_color(e.data("faveTextColor"), 0),
     padding: "8px",
-
-    "text-border-width": 0,
-    "text-wrap": "wrap",
-
-    // ghost: "yes",
-    // "ghost-offset-x": 1,
-    // "ghost-offset-y": 1,
-    // "ghost-opacity": 1,
-    // "shadow-blur": 20,
-    // "shadow-color": "#ff0000",
-    // "shadow-offset-x": 10,
-    // "shadow-offset-y": 10,
-    // "shadow-opacity": 1,
-  },
-  ":selected": {
-    "border-width": 3,
-    "border-color": "#333",
+    "background-color": (e) => {
+      if (e.data("id") === "@@startnode") return "#ffffff";
+      if (e.data("id") === "@@endnode") return "#f58b00";
+      return change_color(e.data("faveColor"), -0.1);
+    },
+    "border-style": "solid",
+    "border-color": (e) => {
+      if (e.data("id") === "@@startnode") return "#f58b00";
+      if (e.data("id") === "@@endnode") return "#f58b00";
+      return change_color(e.data("faveColor"), 0.3);
+    },
+    "border-width": (e) => {
+      const node_id = e.data("id");
+      if (node_id === "@@startnode" || node_id === "@@endnode") return "5px";
+      return "1px";
+    },
   },
   edge: {
-    // 'color': (e) => change_color(e.data('faveTextColor'), -0.1),
     color: "#939393",
     "control-point-step-size": 60,
     "edge-text-rotation": 0,
     "font-size": 18,
-    label: (e) => e.data("label"),
+    label: "data(label)",
     "loop-direction": -41,
     "loop-sweep": 181,
     "text-background-color": "#000",
@@ -63,59 +37,62 @@ const cyLightStyle = {
     "curve-style": "data(edgeStyle)",
     "text-margin-y": -10,
     "text-wrap": "wrap",
-    opacity: 0.5,
+    opacity: 0,
     width: "mapData(strength, 0, 100, 2, 8)",
     "target-arrow-shape": "triangle",
     "line-color": "#939393",
-    // 'source-arrow-color': (e) => change_color(e.data('faveColor'), -0.1),
-    // 'target-arrow-color': (e) => change_color(e.data('faveColor'), -0.1),
     "source-arrow-color": "#939393",
     "target-arrow-color": "#939393",
     "edge-distances": "intersection",
     "text-outline-color": "#939393",
     "text-outline-width": 0,
-    "control-point-distances": function (ele) {
-      if (ele.data("point-distances")) {
-        return ele.data("point-distances");
-      }
-      return 40;
-    },
-    "control-point-weights": function (ele) {
-      if (ele.data("point-weights")) {
-        return ele.data("point-weights");
-      }
-      return 0.5;
+    "control-point-distances": (e) => e.data("point-distances") || 40,
+    "control-point-weights": (e) => e.data("point-weights") || 0.5,
+  },
+
+  // on scrollzoom
+  "node.scrollzoom": { "border-width": "2px" },
+  "edge.scrollzoom": {
+    width: (e) => {
+      if (!e.data("initialWidth")) e.data().initialWidth = e.style("width");
+      const edge_width = parseFloat(e.data("initialWidth").replace("px", ""));
+      return `${edge_width + edge_width / 1.5}px`;
     },
   },
+  "edge.small-scrollzoom": { opacity: 0.3 },
+  "edge.medium-scrollzoom": { opacity: 0.5 },
+  "edge.large-scrollzoom": { opacity: 1 },
+
+  // questionable - from server side
+  "node.questionable": {},
   "edge.questionable": {
     "line-style": "dashed",
     "target-arrow-shape": "triangle",
   },
-  ".mouseOverColor": {
-    "background-color": "#a0a0a0",
+
+  // on mouseover
+  ".mouseover": { "background-color": "#a0a0a0" },
+
+  // on hightlight
+  "node.highlight": { "border-width": "5px", "border-color": "#000" },
+  "edge.highlight": {
+    "source-arrow-color": "#000",
+    "target-arrow-color": "#000",
+    "line-color": "#000",
+    width: "6px",
+    opacity: 1,
   },
-  ".faded": {
-    opacity: 0.25,
-    "text-opacity": 0,
+
+  // on click
+  "node.click": { "border-width": "5px", "border-color": "#000" },
+  "edge.click": {
+    "source-arrow-color": "#000",
+    "target-arrow-color": "#000",
+    "line-color": "#000",
+    width: "6px",
+    opacity: 1,
   },
-  ".highlighted": {
-    "background-color": "data(highlightedColor)",
-    "line-color": "data(highlightedColor)",
-    "target-arrow-color": "data(highlightedColor)",
-    "transition-property": "background-color, line-color, target-arrow-color",
-    "transition-duration": "0.5s",
-  },
-  ".highlight-element": {
-    "background-color": "#C3E2FF",
-  },
-  ".highlight-edge": {
-    "source-arrow-color": "#C3E2FF",
-    "target-arrow-color": "#C3E2FF",
-    "background-color": "#C3E2FF",
-    "line-color": "#C3E2FF",
-    "background-color": "#C3E2FF",
-  },
-  "edge.hide-label": {
-    "text-opacity": 0,
-  },
+
+  // hide edge label
+  "edge.hide-label": { "text-opacity": 0 },
 };

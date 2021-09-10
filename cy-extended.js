@@ -1,30 +1,6 @@
 document.addEventListener("DOMContentLoaded", initialize);
 
-class Variable {
-  constructor(initVal) {
-    this.val = initVal; // Value to be stored in this object
-  }
-
-  listenForValue = (val, fn) => {
-    this.valueToListenFor = val;
-    this.onChange = fn;
-  };
-
-  listen = () => (this.shouldListen = true);
-
-  unregister = () => (this.shouldListen = false);
-
-  getValue = () => this.val;
-
-  // This method changes the value and calls the given handler
-  setValue = function (value) {
-    this.val = value;
-    if (this.shouldListen && this.valueToListenFor === value) this.onChange?.();
-  };
-}
-
 function initialize() {
-  ANIMATION_PROPERTIES = { duration: 60, easing: "ease-in-sine" };
   CY = cytoscape({
     container: document.querySelector("#cy"),
     layout: {
@@ -38,18 +14,18 @@ function initialize() {
     userPanningEnabled: true,
     userZoomingEnabled: true,
     wheelSensitivity: 0.1,
+    multiClickDebounceTime: 250,
     zoom: 1,
     zoomingEnabled: true,
   }).nodeHtmlLabel([{ query: "node", tpl: _nodeMarkup }]);
+  ANIMATION_PROPERTIES = { duration: 60, easing: "ease-in-sine" };
 
   _updateCyStyle();
   window.matchMedia(DARK_MODE_SCHEME).addEventListener("change", (e) => {
-    _updateCyStyle(e.matches ? cyDarkStyle : cyLightStyle);
+    _updateCyStyle(e.matches ? CY_DARK_STYLE : CY_LIGHT_STYLE);
   });
 
-  _applyCustomizedEvents();
   _cytoscapeListeners();
-
   loadGraph(get_random_data(true));
 
   document.zoomOut = _zoomOut;
@@ -60,9 +36,30 @@ function initialize() {
   document.isZoomReachedMax = isZoomReachedMax;
   document.isZoomReachedMin = isZoomReachedMin;
   document.loadGraph = loadGraph;
-  document.setBaseColor = (...args) => {
-    IS_GRAPH_LOADING.listenForValue(false, () => set_base_color(...args));
-  };
+  document.setBaseColor = (...args) => set_base_color(...args);
+}
+
+function _cytoscapeListeners() {
+  // single-click event-listeners
+  CY.on("oneclick", _onCanvasClick);
+  CY.on("oneclick", "node", _onNodeClick);
+  CY.on("oneclick", "edge", _onEdgeClick);
+
+  // double-click event-listeners
+  CY.on("dblclick", _onCanvasDoubleClick);
+  CY.on("dblclick", "node", _onNodeDoubleClick);
+  CY.on("dblclick", "edge", _onEdgeDoubleClick);
+
+  // mouse-over event-listeners
+  CY.on("mouseover", "node", _onMouseOver);
+  CY.bind("mouseover", "edge", _onMouseOver);
+
+  // mouse-out event-listeners
+  CY.bind("mouseout", "node", _onMouseOut);
+  CY.on("mouseout", "edge", _onMouseOut);
+
+  // scrollzoom event-listener
+  CY.on("scrollzoom", _onScrollZoom);
 }
 
 const styleJsonToString = (style = {}, data = {}) => {
@@ -75,10 +72,10 @@ const styleJsonToString = (style = {}, data = {}) => {
 };
 
 const get_start_node_markup = () => {
-  return `<div style="margin-left: 2px;">▶</div>`;
+  return `<div></div>`;
 };
 const get_end_node_markup = () => {
-  return `<div style="margin-top: -4px; font-size: 20px;">■</div>`;
+  return `<div></div>`;
 };
 const get_name_markup = ({ name, name_css }) => {
   if (!name) return "";
@@ -108,8 +105,8 @@ function _nodeMarkup(data) {
 }
 
 function _getCyStyle() {
-  if (!window?.matchMedia?.(DARK_MODE_SCHEME).matches) return cyLightStyle;
-  return cyDarkStyle;
+  if (!window?.matchMedia?.(DARK_MODE_SCHEME).matches) return CY_LIGHT_STYLE;
+  return CY_DARK_STYLE;
 }
 
 function _updateCyStyle(style = _getCyStyle()) {
@@ -149,6 +146,9 @@ function _alterData(data = {}) {
     } else data.node_size = LARGE_NODE_TAG;
     return node;
   });
+  const base_color = BASE_COLOR.getValue();
+  if (!base_color) return data;
+  data.elements.nodes = set_node_shades(data.elements.nodes, base_color);
   return data;
 }
 
@@ -160,11 +160,12 @@ function _setZoomConfig(config) {
 }
 
 function _setInitialStyle() {
-  const eq = () => true;
-  const lt = () => false;
-  const gt = () => false;
+  const eq = (_) => true;
+  const lt = (_) => false;
+  const gt = (_) => false;
   ZOOM_SETTINGS.custom_zoom_levels?.map((c = {}) => {
     if (!c.condition_exp({ eq, lt, gt })) return;
+    _nodeMarkupStyleHandler(c.node_markup_style);
     _nodeStyleHandler(c.node_style);
     _edgeStyleHandler(c.edge_style);
   });
@@ -193,7 +194,6 @@ function _setDefZoomCoord() {
 
 function loadGraph(data) {
   return new Promise(function (resolve, _) {
-    IS_GRAPH_LOADING.setValue(true);
     _alterData(data);
     const { elements: new_elements } = data;
     const { elements: prev_ele_data } = PREV_DATA || {};
@@ -208,6 +208,7 @@ function loadGraph(data) {
     if (!_hasTransitNodes) {
       _addElements(data.elements);
       _setDefZoomCoord();
+      highlightPath(["grainne keating", "john freyne", "siobhan cahill"]);
       return resolve(true);
     }
     ANIMATION_PROPERTIES.duration = 200;
@@ -230,43 +231,32 @@ function loadGraph(data) {
         return ({ x: toX, y: toY } = nearest_node?.position);
       },
       stop: () => {
-        const layout_option = {
+        const layout_options = {
           name: "preset",
           animate: true,
           fit: true,
           stop: () => {
-            _setDefZoomCoord();
-            IS_GRAPH_LOADING.setValue(false);
-            resolve(true);
+            const layout_options = {
+              name: "preset",
+              animate: true,
+              fit: true,
+              stop: () => {
+                _setDefZoomCoord();
+                resolve(true);
+              },
+            };
+            CY.elements().layout(layout_options).run(); // To resize the graph, if it's not already resized properly from the previous layout animation
           },
-          // const layout_option = {
-          //   name: "preset",
-          //   animate: true,
-          //   fit: true,
-          //   stop: () => {
-
-          //     // _onScrollZoom();
-
-          //     // const { h, w } = CY.elements().renderedBoundingBox();
-          //     // console.log(_isGraphSizeEqual(0, { h, w })),
-          //     // setTimeout(
-          //     // () => console.log(_isGraphSizeEqual(0, { h, w })),
-          //     // 0
-          //     // );
-          //     resolve(true);
-          //   },
-          // };
-          // CY.elements().layout(layout_option).run(); // To resize the graph, if it's not already resized properly from the previous layout animation
         };
         _addElements(data.elements, { animate: false });
-        CY.elements().layout(layout_option).run();
+        CY.elements().layout(layout_options).run();
       },
     };
     CY.elements().layout(transform_layout_options).run();
   });
 }
 
-function findNearestNodes(previous_nodes, new_nodes) {
+function findNearestNodes(previous_nodes, new_nodes = []) {
   const ingnorable_ids = ["@@startnode", "@@endnode"];
   const allocated_prev_node_ids = [];
   new_nodes.map((new_node) => {
@@ -334,47 +324,58 @@ const _isSmallNode = (data) => data.node_size === SMALL_NODE_TAG;
 const _isMediumNode = (data) => data.node_size === MEDIUM_NODE_TAG;
 const _isLargeNode = (data) => data.node_size === LARGE_NODE_TAG;
 
-function _updateNodeStyle(nodes, node_style, node_size) {
-  if (!node_style?.[node_size]) return;
+function _updateNodeMarkupStyle(nodes, markup_style, node_size) {
+  if (!markup_style?.[node_size]) return;
   for (let i = 0; i < nodes?.length; i++) {
     const data = JSON.parse(atob(nodes[i].getAttribute("data-json")));
-    if (node_style?.[node_size]?.wrapper) {
-      const style = styleJsonToString(node_style?.[node_size].wrapper, data);
+    if (markup_style?.[node_size]?.wrapper) {
+      const style = styleJsonToString(markup_style?.[node_size].wrapper, data);
       nodes[i].style.cssText += style;
     }
-    if (node_style?.[node_size]?.name && nodes[i].children?.[0]) {
-      const style = styleJsonToString(node_style?.[node_size].name, data);
+    if (markup_style?.[node_size]?.name && nodes[i].children?.[0]) {
+      const style = styleJsonToString(markup_style?.[node_size].name, data);
       nodes[i].children[0].style.cssText += style;
     }
-    if (node_style?.[node_size]?.label && nodes[i].children?.[1]) {
-      const style = styleJsonToString(node_style?.[node_size].label, data);
+    if (markup_style?.[node_size]?.label && nodes[i].children?.[1]) {
+      const style = styleJsonToString(markup_style?.[node_size].label, data);
       nodes[i].children[1].style.cssText += style;
     }
   }
 }
 
-function _nodeStyleHandler(node_style = {}) {
-  if (!node_style) return;
-  node_style.exec?.();
+function _nodeMarkupStyleHandler(markup_style = {}) {
+  if (!markup_style) return;
+  markup_style.exec?.();
   // global style that applies to every graph regardless of the node-size
   const nodes = document.getElementsByClassName("node-wrapper");
-  _updateNodeStyle(nodes, node_style, "all");
+  _updateNodeMarkupStyle(nodes, markup_style, "all");
   [SMALL_NODE_TAG, MEDIUM_NODE_TAG, LARGE_NODE_TAG].map((tag) => {
-    if (!node_style[tag]) return;
+    if (!markup_style[tag]) return;
     const nodes = document.getElementsByClassName(`${tag}-node`);
-    _updateNodeStyle(nodes, node_style, tag);
+    _updateNodeMarkupStyle(nodes, markup_style, tag);
+  });
+}
+
+function _nodeStyleHandler(node_style = {}) {
+  const { all = {}, connected_edges = {}, exec } = node_style;
+  typeof exec === "function" && exec();
+  CY.nodes().style(all);
+  Object.entries(connected_edges).map(([key, value = {}]) => {
+    const nodes = CY.nodes(key !== "all" && `[node_size = "${key}"]`);
+    nodes.map((n) => {
+      const style = Object.assign({}, value); // creates a clone of the given object
+      style.fn?.(n.connectedEdges());
+      delete style.fn;
+      n.connectedEdges().style(style);
+    });
   });
 }
 
 function _edgeStyleHandler(edge_style = {}) {
-  if (!edge_style) return;
   const { all = {}, connected_nodes = {}, exec } = edge_style;
   typeof exec === "function" && exec();
   CY.edges().style(all);
-  Object.entries(connected_nodes).map(([key, value = {}]) => {
-    const nodes = CY.nodes(key !== "all" && `[node_size = "${key}"]`);
-    nodes.map((n) => n.connectedEdges().style(value));
-  });
+  CY.edges().map((e) => e.connectedNodes().style(connected_nodes));
 }
 
 const _zoomHandler = (e = _getCustomScrollEvent()) => {
@@ -384,6 +385,7 @@ const _zoomHandler = (e = _getCustomScrollEvent()) => {
   const lt = (pct) => _isGraphSizeSmaller(pct, { h, w });
   ZOOM_SETTINGS?.custom_zoom_levels?.map((c) => {
     if (!c.condition_exp({ gt, lt, eq })) return;
+    _nodeMarkupStyleHandler(c.node_markup_style);
     _nodeStyleHandler(c.node_style);
     _edgeStyleHandler(c.edge_style);
   });
@@ -393,184 +395,161 @@ function _getCustomScrollEvent() {
   return { target: { zoom: () => CY.zoom(), elements: () => CY.elements() } };
 }
 
-function _onScrollZoom(e = _getCustomScrollEvent()) {
-  const isReachedMax = isZoomReachedMax();
-  if (isReachedMax) CY.maxZoom(e.target.zoom());
-  const isReachedMin = isZoomReachedMin();
-  if (isReachedMin) CY.minZoom(e.target.zoom());
-  if (isReachedMax || isReachedMin) return;
-  _zoomHandler(e);
+function _postMessage(method, data) {
+  return;
+  window.webkit.messageHandlers[method].postMessage(data);
 }
 
-function _cytoscapeListeners() {
-  const { canvas, node, edge } = cy;
-
-  // canvas event-listeners
-  canvas.on("click", (e) => {
-    if (e.target !== cy) return;
-    CY.elements().removeClass("highlighted");
-    CY.elements().removeClass("highlight-element");
-    CY.elements().removeClass("highlight-edge");
-  });
-  canvas.on("dblclick", (e) => {
-    if (e.target !== cy) return;
-    _zoomIn(e.originalEvent.x, e.originalEvent.y);
-  });
-
-  // node event-listeners
-  node.on("click", nodeClickFn);
-  node.on("dblclick", (e) => {
-    loadGraph(get_random_data());
-    const modal_data = e.target.attr();
-    // window.webkit.messageHandlers.didDoubleClickNode.postMessage(modal_data);
-  });
-
-  // edge event-listeners
-  edge.on("click", edgeClickFn);
-  edge.on("dblclick", (e) => {
-    const edgeData = e.target.attr();
-    const [sourceData, targetData] = e.target.connectedNodes();
-    edgeData.source = sourceData?.attr()?.name || sourceData?.attr()?.id;
-    edgeData.target = targetData?.attr()?.name || targetData?.attr()?.id;
-    const modal_data = { ...e.target.attr(), ...e.target.boundingBox() };
-    window.webkit.messageHandlers.didDoubleClickEdge.postMessage(modal_data);
-  });
-
-  // scroll event-listener
-  CY.on("scrollzoom", (e) => {
-    if (CLEAR_SCROLL_TIMER) clearTimeout(CLEAR_SCROLL_TIMER);
-    CLEAR_SCROLL_TIMER = setTimeout(() => _onScrollZoom(e), 150);
-  });
-
-  // mouseover event-listener
-  CY.elements().unbind("tap");
-  CY.elements().unbind("mouseover");
-  CY.elements().bind("mouseover", (event) => {
-    const target = event.target;
-    target.addClass("mouseOverColor");
-    if (!target.attr().name) return;
-    window.webkit.messageHandlers.didMouseOver.postMessage(target);
-  });
-
-  // mouseout event-listener
-  CY.elements().unbind("mouseOut");
-  CY.elements().bind("mouseOut", (event) => {
-    const target = event.target;
-    target.removeClass("mouseOverColor");
-    window.webkit.messageHandlers.didMouseOut.postMessage(target);
-  });
+function _onCanvasClick(e) {
+  if (e.target !== CY) return;
+  CY.elements().removeClass("highlight");
+  CY.elements().removeClass("click");
 }
 
-function _applyCustomizedEvents() {
-  const prefixes = [, "node", "edge"];
-  CY.addListener = CY.on;
-  for (let i = 0; i < prefixes.length; i++) {
-    let timeout, previousTimeStamp, isDoubleClicked;
-    let singleClickCallback, doubleClickCallback;
-    const eventPrefix = prefixes[i];
-    if (!prefixes[i]) prefixes[i] = "canvas";
-    const event = (cy[prefixes[i]] = {});
-    event.on = (method, cb, options = {}) => {
-      let { timeout: clickTimeout = 300 } = options;
-      CY.removeListener("tap", eventPrefix);
-      if (method === "dblclick") doubleClickCallback = cb;
-      if (method === "click") singleClickCallback = cb;
-      CY.addListener("tap", eventPrefix, (e) => {
-        isDoubleClicked = false;
-        if (e.timeStamp - previousTimeStamp <= clickTimeout) {
-          timeout && clearTimeout(timeout);
-          isDoubleClicked = true;
-          doubleClickCallback?.(e);
-        }
-        timeout = setTimeout(() => {
-          if (isDoubleClicked) return;
-          singleClickCallback?.(e);
-        }, clickTimeout);
-        previousTimeStamp = e.timeStamp;
-      });
-    };
-    event.unbind = (method) => {
-      if (method.includes("zoom")) _onUnregisterZoom(method);
-      else if (method === "click" || method === "dblclick") {
-        CY.removeListener("tap", eventPrefix);
-      } else throw new Error(`no ${method} listener registered`);
-      CY.removeListener("tap", eventPrefix);
-    };
-  }
+function _onCanvasDoubleClick(e) {
+  if (e.target !== CY) return;
+  _zoomIn(e.originalEvent.x, e.originalEvent.y);
 }
 
-function nodeClickFn(e) {
+function _onNodeClick(e) {
+  CY.elements().removeClass("click highlight");
   const node = e.target;
-  node.addClass("highlight-element");
+  node.addClass("click");
+  console.log(node.classes());
   const nodeData = node.attr();
   const nodePosition = node.renderedPosition();
   const nodeBox = node.renderedBoundingBox();
   const modal_data = {
     ...node.boundingBox(),
-    xlabel: nodeData.xlabel,
-    name: nodeData.name,
+    xlabel: nodeData.xlabel || nodeData.id,
+    name: nodeData.name || nodeData.id,
     size: { height: nodeBox.h, width: nodeBox.w },
     position: { x: nodePosition.x, y: nodePosition.y },
   };
-  window.webkit.messageHandlers.didClickNode.postMessage(modal_data);
+  _postMessage("didClickNode", modal_data);
 }
 
-function edgeClickFn(e) {
+function _onNodeDoubleClick(e) {
+  const modal_data = e.target.attr();
+  loadGraph(get_random_data());
+  _postMessage("didDoubleClickNode", modal_data);
+}
+
+function _onEdgeClick(e) {
   const edge = e.target;
-  edge.addClass("highlight-edge");
-  edge.connectedNodes().addClass("highlight-element");
+  if (edge.connectedNodes().length < 2) return;
+  CY.elements().removeClass(["click", "highlight"]);
+  edge.addClass("click");
+  edge.connectedNodes().addClass("click");
   const edgeData = edge.attr();
   edgeData.source = edge.connectedNodes()[0].attr().name;
   edgeData.target = edge.connectedNodes()[1].attr().name;
+  if (!edgeData.source) edgeData.source = edge.connectedNodes()[0].attr().id;
+  if (!edgeData.target) edgeData.target = edge.connectedNodes()[1].attr().id;
+  edgeData.source = edgeData.source.toUpperCase();
+  edgeData.target = edgeData.target.toUpperCase();
   const modal_data = {
     ...edge.attr(),
     ...edge.boundingBox(),
     position: { x: e.originalEvent.clientX, y: e.originalEvent.clientY },
   };
-  window.webkit.messageHandlers.didClickEdge.postMessage(modal_data);
+  _postMessage("didClickEdge", modal_data);
+}
+
+function _onEdgeDoubleClick(e) {
+  const edgeData = e.target.attr();
+  const [sourceData, targetData] = e.target.connectedNodes();
+  edgeData.source = sourceData?.attr()?.name || sourceData?.attr()?.id;
+  edgeData.target = targetData?.attr()?.name || targetData?.attr()?.id;
+  const modal_data = { ...e.target.attr(), ...e.target.boundingBox() };
+  _postMessage("didDoubleClickEdge", modal_data);
+}
+
+function _onScrollZoom(e) {
+  if (CLEAR_SCROLL_TIMER) clearTimeout(CLEAR_SCROLL_TIMER);
+  CLEAR_SCROLL_TIMER = setTimeout(() => {
+    const isReachedMax = isZoomReachedMax();
+    if (isReachedMax) CY.maxZoom(e.target.zoom());
+    const isReachedMin = isZoomReachedMin();
+    if (isReachedMin) CY.minZoom(e.target.zoom());
+    if (isReachedMax || isReachedMin) return;
+    _zoomHandler(e);
+  }, 150);
+}
+
+function _onMouseOver({ target }) {
+  // target.addClass("mouseover");
+  _postMessage("didMouseOver", target);
+}
+
+function _onMouseOut({ target }) {
+  // target.removeClass("mouseover");
+  _postMessage("didMouseOut", target);
 }
 
 function _resizeGraph() {
   CLEAR_RESIZE_TIMER && clearTimeout(CLEAR_RESIZE_TIMER);
   CLEAR_RESIZE_TIMER = setTimeout(() => {
-    CY.resize();
-    CY.fit(CY.elements(), 20);
+    const prev_viewport = { zoom: CY.zoom(), pan: CY.pan() };
+    const layout_options = {
+      name: "preset",
+      animate: false,
+      fit: true,
+      stop: () => {
+        prev_viewport.pan.x = CY.pan("x"); // To keep the horizontal axis up to date
+        CY.viewport(prev_viewport);
+      },
+    };
+    CY.elements().layout(layout_options).run();
   }, 1000);
 }
 
 function _zoomIn(x, y) {
-  CY.zoom({ level: CY.zoom() + 0.25, renderedPosition: { x, y } });
+  if (x && y) {
+    CY.zoom({ level: CY.zoom() + 0.25, renderedPosition: { x, y } });
+  } else {
+    const renderedPosition = CY.elements().renderedPosition();
+    const position = CY.elements().position();
+    CY.zoom({ level: CY.zoom() + 0.25, renderedPosition, position });
+  }
+  CY.emit(["scrollzoom"]);
 }
 
 function _zoomOut(x, y) {
-  CY.zoom({ level: CY.zoom() - 0.25, renderedPosition: { x, y } });
+  if (x && y) {
+    CY.zoom({ level: CY.zoom() - 0.25, renderedPosition: { x, y } });
+  } else {
+    const renderedPosition = CY.elements().renderedPosition();
+    const position = CY.elements().position();
+    CY.zoom({ level: CY.zoom() - 0.25, renderedPosition, position });
+  }
+  CY.emit("scrollzoom");
 }
 
-function highlightPath(xLabels, highlightedColor = "#ffd480") {
+function highlightPath(xLabels = []) {
+  xLabels = xLabels.map((l) => l.toUpperCase());
   const nodes = [];
   for (let i = 0; i < CY.nodes().length; i++) {
     const { name } = CY.nodes()[i].attr();
-    if (xLabels.includes(name)) nodes.push(CY.nodes()[i]);
+    if (xLabels.includes(name?.toUpperCase?.())) nodes.push(CY.nodes()[i]);
   }
   nodes.map((node, idx) => {
-    node.data().highlightedColor = highlightedColor;
-    node.addClass("highlighted");
+    node.addClass("highlight");
     if (!nodes?.[idx + 1]) return;
-    const nextNodeTarget = nodes[idx + 1].attr().id;
     for (let i = 0; i < node.connectedEdges().length; i++) {
-      const { target } = node.connectedEdges()[i].attr();
-      if (target == nextNodeTarget) {
-        node.connectedEdges()[i].data().highlightedColor = highlightedColor;
-        node.connectedEdges()[i].addClass("highlighted");
-      }
+      const es1 = node.connectedEdges()[i];
+      nodes?.[idx + 1].connectedEdges().map((es2) => {
+        if (es1.attr("source") !== es2.attr("source")) return;
+        if (es1.attr("target") !== es2.attr("target")) return;
+        if (es1.attr("source") === node.attr("id")) return;
+        es1.addClass("highlight");
+      });
     }
   });
 }
 
 function clearHighlightedPath() {
-  CY.elements().removeClass("highlighted");
-  CY.elements().removeClass("highlight-element");
-  CY.elements().removeClass("highlight-edge");
+  CY.elements().removeClass("highlight");
 }
 
 function componentToHex(c) {
@@ -583,13 +562,11 @@ function rgbToHex(r, g, b) {
 }
 
 function hexToRgb(hex) {
-  let c;
-  if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
-    c = hex.substring(1).split("");
-    if (c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
-    c = "0x" + c.join("");
-    return [(c >> 16) & 255, (c >> 8) & 255, c & 255];
-  } else return [0, 0, 0];
+  if (!/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) return [0, 0, 0];
+  let c = hex.substring(1).split("");
+  if (c.length === 3) c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+  c = "0x" + c.join("");
+  return [(c >> 16) & 255, (c >> 8) & 255, c & 255];
 }
 
 function clamp(v, min = 0, max = 255) {
@@ -615,16 +592,19 @@ function map_numbers(x, old_min, old_max, new_min, new_max) {
   return new_min;
 }
 
-function set_base_color(hex_color) {
+function set_node_shades(nodes, hex_color) {
+  if (!nodes.length) return nodes;
   const frequency_list = {};
-  CY.nodes().map((node) => {
-    const { id, xlabel } = node.data();
+  nodes.map(({ data }) => {
+    data = typeof data === "function" ? data() : data;
+    const { id, xlabel } = data;
     xlabel && (frequency_list[id] = parseInt(xlabel));
   });
   const max_frequency = Math.max(...Object.values(frequency_list));
   const min_frequency = Math.min(...Object.values(frequency_list));
-  CY.nodes().map((node) => {
-    const data = node.data();
+  nodes.map((node) => {
+    node.data = typeof node.data === "function" ? node.data() : node.data;
+    const { data } = node;
     if (frequency_list.hasOwnProperty(data.id)) {
       const scale = map_numbers(
         frequency_list[data.id],
@@ -645,5 +625,10 @@ function set_base_color(hex_color) {
       data.faveTextColor = "#000000";
     }
   });
-  _updateCyStyle();
+  return nodes;
+}
+
+function set_base_color(hex_color) {
+  BASE_COLOR.setValue(hex_color);
+  set_node_shades(CY.nodes(), hex_color);
 }
