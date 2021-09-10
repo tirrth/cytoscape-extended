@@ -27,11 +27,11 @@ const DARK_MODE_SCHEME = "(prefers-color-scheme: dark)";
 const SMALL_NODE_TAG = "small";
 const MEDIUM_NODE_TAG = "medium";
 const LARGE_NODE_TAG = "large";
-const IS_GRAPH_LOADING = new Variable(false);
+const BASE_COLOR = new Variable();
 
 const NODE_GLOBAL_STYLE = {
   wrapper: {
-    height: (d) => `${d.height + 5}px`,
+    height: ({ height }) => `${height + 20}px`,
     "text-align": "center",
     position: "absolute",
     top: "50%",
@@ -41,14 +41,22 @@ const NODE_GLOBAL_STYLE = {
     "flex-direction": "column",
     "justify-content": "center",
     "align-items": "center",
-    padding: "auto",
-    width: (d) => `${d.weight}px`,
-    color: (d) => d.faveTextColor,
+    width: ({ weight }) => `${weight + 20}px`,
+    color: ({ faveTextColor }) => faveTextColor,
     "pointer-events": "none",
-    transition: "opacity 250ms",
+    "border-radius": "8px",
+    border: ({ id }) => {
+      if (!CY.getElementById(id).hasClass("click")) return "none";
+      return "3px solid #000000";
+    },
+    "box-shadow": ({ id }) => {
+      if (!CY.getElementById(id).hasClass("click")) return "none";
+      return "0 0 0 2px #FFFFFF inset";
+    },
+    transition: "opacity 250ms, border 250ms, box-shadow 250ms",
   },
   name: {
-    "font-size": (d) => d.font,
+    "font-size": ({ font }) => font,
     "letter-spacing": "2px",
     "font-weight": "lighter",
     margin: 0,
@@ -59,14 +67,13 @@ const NODE_GLOBAL_STYLE = {
     display: "-webkit-box",
     "-webkit-line-clamp": 2,
     "-webkit-box-orient": "vertical",
-    transition: "display 250ms",
   },
   label: {
     padding: 0,
     margin: 0,
     "letter-spacing": "2px",
     "font-weight": "lighter",
-    "font-size": (d) => d.font,
+    "font-size": ({ font }) => font,
     "-webkit-text-stroke": (d) => `1px ${d.faveTextColor}`,
     "margin-top": "5px",
     transition: "display 250ms",
@@ -84,17 +91,28 @@ const ZOOM_CONFIG = [
         edge_style: { exec: () => CY.edges().addClass("hide-label") },
         node_style: {
           connected_edges: {
-            small: { opacity: 0.3 },
-            medium: { opacity: 0.5 },
-            large: { opacity: 1 },
+            // small: { opacity: 0.3 },
+            // medium: { opacity: 0.5 },
+            // large: { opacity: 1 },
+            small: { fn: (e) => e.addClass("small-scrollzoom") },
+            medium: { fn: (e) => e.addClass("medium-scrollzoom") },
+            large: { fn: (e) => e.addClass("large-scrollzoom") },
           },
         },
       },
       {
         condition_exp: ({ gt }) => gt(0),
         edge_style: {
-          exec: () => CY.edges().removeClass("hide-label"),
-          all: { opacity: 0.5 },
+          exec: () => {
+            CY.edges().removeClass([
+              "hide-label",
+              "small-scrollzoom",
+              "medium-scrollzoom",
+              "large-scrollzoom",
+            ]);
+            CY.edges().addClass("medium-scrollzoom");
+          },
+          // all: { opacity: 0.5 },
         },
       },
     ],
@@ -107,8 +125,42 @@ const ZOOM_CONFIG = [
       {
         condition_exp: ({ eq, lt }) => eq(0) || lt(0), // exception for graphs having less than or equal to 10 nodes
         edge_style: {
-          exec: () => CY.edges().removeClass("hide-label"),
-          all: { opacity: 0.5 },
+          // exec: () => CY.edges().removeClass("hide-label"),
+          // all: { opacity: 0.5 },
+          exec: () => {
+            CY.edges().removeClass([
+              "hide-label",
+              "small-scrollzoom",
+              "medium-scrollzoom",
+              "large-scrollzoom",
+            ]);
+            CY.edges().addClass("medium-scrollzoom");
+          },
+        },
+      },
+
+      {
+        condition_exp: ({ eq, gt }) => eq(0) || gt(0),
+        node_style: {
+          large: { wrapper: { opacity: 1 } },
+          medium: { wrapper: { opacity: 1 } },
+          small: { wrapper: { opacity: 1 } },
+        },
+      },
+      {
+        condition_exp: ({ lt }) => lt(10),
+        node_style: {
+          large: { wrapper: { opacity: 1 } },
+          medium: { wrapper: { opacity: 0.5 } },
+          small: { wrapper: { opacity: 0.4 } },
+        },
+      },
+      {
+        condition_exp: ({ lt }) => lt(20),
+        node_style: {
+          large: { wrapper: { opacity: 0 } },
+          medium: { wrapper: { opacity: 0 } },
+          small: { wrapper: { opacity: 0 } },
         },
       },
     ],
@@ -145,12 +197,7 @@ const ZOOM_CONFIG = [
       {
         condition_exp: ({ eq }) => eq(0),
         edge_style: {
-          exec: () => {
-            CY.edges().map((e) => {
-              const edge_width = parseFloat(e.style("width").replace("px", ""));
-              e.style({ width: `${edge_width + edge_width / 2}px` });
-            });
-          },
+          exec: () => CY.edges().addClass("scrollzoom"),
         },
       },
       {
@@ -160,11 +207,11 @@ const ZOOM_CONFIG = [
           medium: { wrapper: { opacity: 0 } },
           large: { wrapper: { opacity: 0 } },
         },
-        edge_style: { exec: () => CY.nodes().style({ "border-width": "2px" }) },
+        edge_style: { exec: () => CY.nodes().addClass("scrollzoom") },
       },
       {
         condition_exp: ({ gt }) => gt(0),
-        edge_style: { exec: () => CY.nodes().style({ "border-width": "1px" }) },
+        edge_style: { exec: () => CY.nodes().removeClass("scrollzoom") },
       },
       // large nodes' style
       {
@@ -256,12 +303,7 @@ const ZOOM_CONFIG = [
       {
         condition_exp: ({ eq }) => eq(0),
         edge_style: {
-          exec: () => {
-            CY.edges().map((e) => {
-              const edge_width = parseFloat(e.style("width").replace("px", ""));
-              e.style({ width: `${edge_width + edge_width / 1.5}px` });
-            });
-          },
+          exec: () => CY.edges().addClass("scrollzoom"),
         },
       },
       {
@@ -271,11 +313,11 @@ const ZOOM_CONFIG = [
           medium: { wrapper: { opacity: 0 } },
           large: { wrapper: { opacity: 0 } },
         },
-        edge_style: { exec: () => CY.nodes().style({ "border-width": "2px" }) },
+        edge_style: { exec: () => CY.nodes().addClass("scrollzoom") },
       },
       {
         condition_exp: ({ gt }) => gt(0),
-        edge_style: { exec: () => CY.nodes().style({ "border-width": "1px" }) },
+        edge_style: { exec: () => CY.nodes().removeClass("scrollzoom") },
       },
       // large nodes' style
       {
