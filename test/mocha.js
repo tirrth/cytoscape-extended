@@ -29873,7 +29873,7 @@
 
 	  Mocha.prototype._guardRunningStateTransition = function () {
 	    if (this._state === mochaStates.RUNNING) {
-	      throw createMochaInstanceAlreadyRunningError('Mocha instance is currently running tests, cannot start a next test run until this one is done', this);
+	      // throw createMochaInstanceAlreadyRunningError('Mocha instance is currently running tests, cannot start a next test run until this one is done', this);
 	    }
 
 	    if (this._state === mochaStates.DISPOSED || this._state === mochaStates.REFERENCES_CLEANED) {
